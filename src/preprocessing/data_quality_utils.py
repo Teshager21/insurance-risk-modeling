@@ -57,38 +57,38 @@ class DataQualityUtils:
         self.df = self.df.loc[:, ~self.df.columns.duplicated()]
         return self.df
 
-    def drop_constant_columns(self, verbose: bool = True) -> pd.DataFrame:
-        """
-        Drop columns with only one unique value.
+    # def drop_constant_columns(self, verbose: bool = True) -> pd.DataFrame:
+    #     """
+    #     Drop columns with only one unique value.
 
-        Args:
-            verbose (bool): Whether to log the names of
-            dropped columns. Default is True.
+    #     Args:
+    #         verbose (bool): Whether to log the names of
+    #         dropped columns. Default is True.
 
-        Returns:
-            pd.DataFrame: DataFrame with constant columns removed.
-        """
-        try:
-            constant_cols = [
-                col
-                for col in self.df.columns
-                if self.df[col].nunique(dropna=False) == 1
-            ]
+    #     Returns:
+    #         pd.DataFrame: DataFrame with constant columns removed.
+    #     """
+    #     try:
+    #         constant_cols = [
+    #             col
+    #             for col in self.df.columns
+    #             if self.df[col].nunique(dropna=False) == 1
+    #         ]
 
-            if constant_cols:
-                self.df.drop(columns=constant_cols, inplace=True)
-                if verbose:
-                    msg = f"Dropped {len(constant_cols)} constant column(s): "
-                    f"{', '.join(constant_cols)}"
-                    logger.info(msg)
-            elif verbose:
-                logger.info("✅ No constant columns to drop.")
+    #         if constant_cols:
+    #             self.df.drop(columns=constant_cols, inplace=True)
+    #             if verbose:
+    #                 msg = f"Dropped {len(constant_cols)} constant column(s): "
+    #                 f"{', '.join(constant_cols)}"
+    #                 logger.info(msg)
+    #         elif verbose:
+    #             logger.info("✅ No constant columns to drop.")
 
-        except Exception as e:
-            logger.error(f"Error dropping constant columns: {e}")
-            raise
+    #     except Exception as e:
+    #         logger.error(f"Error dropping constant columns: {e}")
+    #         raise
 
-        return self.df
+    #     return self.df
 
     def clean_dataframe(self) -> pd.DataFrame:
         """
@@ -228,40 +228,40 @@ class DataQualityUtils:
 
         return self.df
 
-    # def drop_constant_columns(self, verbose: bool = True) -> pd.DataFrame:
-    #     """
-    #     Drops columns with only one unique value in the DataFrame.
+    def drop_constant_columns(self, verbose: bool = True) -> pd.DataFrame:
+        """
+        Drops columns with only one unique value in the DataFrame.
 
-    #     Parameters:
-    #         verbose (bool): Whether to log dropped column names.
+        Parameters:
+            verbose (bool): Whether to log dropped column names.
 
-    #     Returns:
-    #         pd.DataFrame: Cleaned DataFrame.
-    #     """
-    #     try:
-    #         if not isinstance(verbose, bool):
-    #             logger.warning(
-    #                 f"[drop_constant_columns] Expected boolean for 'verbose', "
-    #                 f"got {type(verbose)}. Defaulting to True."
-    #             )
-    #             verbose = True  # or False, depending on your preference
+        Returns:
+            pd.DataFrame: Cleaned DataFrame.
+        """
+        try:
+            if not isinstance(verbose, bool):
+                logger.warning(
+                    f"[drop_constant_columns] Expected boolean for 'verbose', "
+                    f"got {type(verbose)}. Defaulting to True."
+                )
+                verbose = True  # or False, depending on your preference
 
-    #         constant_cols = [
-    #             col
-    #             for col in self.df.columns
-    #             if self.df[col].nunique(dropna=False) == 1
-    #         ]
+            constant_cols = [
+                col
+                for col in self.df.columns
+                if self.df[col].nunique(dropna=False) == 1
+            ]
 
-    #         if constant_cols:
-    #             self.df.drop(columns=constant_cols, inplace=True)
-    #             if verbose:
-    #                 logger.info(f"Dropped constant columns: {constant_cols}")
-    #         else:
-    #             if verbose:
-    #                 logger.info("No constant columns found.")
+            if constant_cols:
+                self.df.drop(columns=constant_cols, inplace=True)
+                if verbose:
+                    logger.info(f"Dropped constant columns: {constant_cols}")
+            else:
+                if verbose:
+                    logger.info("No constant columns found.")
 
-    #         return self.df
+            return self.df
 
-    #     except Exception as e:
-    #         logger.exception("Error while dropping constant columns.")
-    #         raise
+        except Exception:
+            logger.exception("Error while dropping constant columns.")
+            raise
