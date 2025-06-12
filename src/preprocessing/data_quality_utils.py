@@ -1,6 +1,8 @@
 from typing import Optional, List, Dict, Union
 import pandas as pd
 import logging
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
@@ -407,3 +409,104 @@ class DataQualityUtils:
             return None
         else:
             return df.dropna(subset=columns)
+
+    @staticmethod
+    def detect_outliers_iqr(
+        df: pd.DataFrame, columns: List[str], iqr_multiplier: float = 1.5
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Detect outliers in specified numeric columns of a DataFrame
+        using the Interquartile Range (IQR) method.
+
+        Parameters:
+        ----------
+        df : pd.DataFrame
+            The input DataFrame.
+        columns : List[str]
+            List of column names to check for outliers.
+        iqr_multiplier : float, optional
+            The multiplier for the IQR to determine the bounds (default is 1.5).
+
+        Returns:
+        -------
+        Dict[str, pd.DataFrame]
+            A dictionary where keys are column names and values
+            are DataFrames containing outlier rows for that column.
+        """
+        outliers = {}
+
+        for col in columns:
+            if col not in df.columns:
+                continue
+
+            if not pd.api.types.is_numeric_dtype(df[col]):
+                continue
+
+            Q1 = df[col].quantile(0.25)
+            Q3 = df[col].quantile(0.75)
+            IQR = Q3 - Q1
+            lower_bound = Q1 - iqr_multiplier * IQR
+            upper_bound = Q3 + iqr_multiplier * IQR
+
+            outlier_rows = df[(df[col] < lower_bound) | (df[col] > upper_bound)]
+
+            if not outlier_rows.empty:
+                outliers[col] = outlier_rows
+
+        return outliers
+
+    @staticmethod
+    def detect_outliers_iqr_with_boxplot(
+        df: pd.DataFrame,
+        columns: List[str],
+        iqr_multiplier: float = 1.5,
+        show_plots: bool = True,
+        save_dir: Optional[str] = None,
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Detect outliers using the IQR method and optionally show boxplots.
+
+        Parameters:
+        - df: DataFrame to check.
+        - columns: List of column names to inspect.
+        - iqr_multiplier: Sensitivity of IQR method.
+        - show_plots: If True, display plots.
+        - save_dir: Directory path to save figures. If None, plots are not saved.
+
+        Returns:
+        - Dict of column names to outlier DataFrames.
+        """
+        outliers = {}
+
+        for col in columns:
+            if col not in df.columns or not pd.api.types.is_numeric_dtype(df[col]):
+                continue
+
+            col_series = df[col].dropna()
+            if col_series.nunique() < 2:
+                continue  # Not enough data to compute a boxplot
+
+            Q1 = col_series.quantile(0.25)
+            Q3 = col_series.quantile(0.75)
+            IQR = Q3 - Q1
+            lower = Q1 - iqr_multiplier * IQR
+            upper = Q3 + iqr_multiplier * IQR
+
+            mask = (df[col] < lower) | (df[col] > upper)
+            if mask.any():
+                outliers[col] = df[mask]
+
+            # Only plot if data is valid
+            if (show_plots or save_dir) and col_series.notna().sum() > 0:
+                plt.figure(figsize=(6, 1.5))
+                sns.boxplot(x=col_series, color="skyblue", fliersize=4)
+                plt.title(f"Boxplot for {col}")
+                plt.tight_layout()
+
+                if save_dir:
+                    plt.savefig(f"{save_dir}/{col}_boxplot.png")
+                if show_plots:
+                    plt.show()
+                plt.close()
+
+        return outliers
