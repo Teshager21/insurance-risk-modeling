@@ -57,39 +57,6 @@ class DataQualityUtils:
         self.df = self.df.loc[:, ~self.df.columns.duplicated()]
         return self.df
 
-    # def drop_constant_columns(self, verbose: bool = True) -> pd.DataFrame:
-    #     """
-    #     Drop columns with only one unique value.
-
-    #     Args:
-    #         verbose (bool): Whether to log the names of
-    #         dropped columns. Default is True.
-
-    #     Returns:
-    #         pd.DataFrame: DataFrame with constant columns removed.
-    #     """
-    #     try:
-    #         constant_cols = [
-    #             col
-    #             for col in self.df.columns
-    #             if self.df[col].nunique(dropna=False) == 1
-    #         ]
-
-    #         if constant_cols:
-    #             self.df.drop(columns=constant_cols, inplace=True)
-    #             if verbose:
-    #                 msg = f"Dropped {len(constant_cols)} constant column(s): "
-    #                 f"{', '.join(constant_cols)}"
-    #                 logger.info(msg)
-    #         elif verbose:
-    #             logger.info("✅ No constant columns to drop.")
-
-    #     except Exception as e:
-    #         logger.error(f"Error dropping constant columns: {e}")
-    #         raise
-
-    #     return self.df
-
     def clean_dataframe(self) -> pd.DataFrame:
         """
         Apply full cleaning pipeline.
@@ -265,3 +232,178 @@ class DataQualityUtils:
         except Exception:
             logger.exception("Error while dropping constant columns.")
             raise
+
+    def drop_columns(
+        self, df: pd.DataFrame, columns_to_drop: list, inplace: bool = False
+    ) -> pd.DataFrame:
+        """
+        Drops specified columns from the DataFrame.
+
+        Parameters:
+        -----------
+        df : pd.DataFrame
+            The DataFrame from which to drop columns.
+        columns_to_drop : list
+            A list of column names to be dropped.
+        inplace : bool, optional (default=False)
+            If True, modifies the original DataFrame. If False, returns a modified copy.
+
+        Returns:
+        --------
+        pd.DataFrame
+            The DataFrame with the specified columns removed (if inplace=False).
+
+        Raises:
+        -------
+        ValueError:
+            If none of the specified columns are found in the DataFrame.
+        """
+        if not isinstance(columns_to_drop, list):
+            raise TypeError("columns_to_drop must be a list of column names.")
+
+        existing_cols = df.columns.tolist()
+        missing_cols = [col for col in columns_to_drop if col not in existing_cols]
+
+        if len(missing_cols) == len(columns_to_drop):
+            raise ValueError(
+                "None of the specified columns were found in the DataFrame."
+            )
+
+        valid_cols_to_drop = [col for col in columns_to_drop if col in existing_cols]
+
+        if inplace:
+            df.drop(columns=valid_cols_to_drop, inplace=True)
+            return None
+        else:
+            return df.drop(columns=valid_cols_to_drop)
+
+    def impute_value_in_column(
+        self,
+        df: pd.DataFrame,
+        column_name: str,
+        target_value,
+        impute_value,
+        inplace: bool = False,
+    ) -> pd.DataFrame:
+        """
+        Checks if a target value exists in a specified column and
+        imputes it with a given value.
+
+        Parameters:
+        -----------
+        df : pd.DataFrame
+            The DataFrame to process.
+        column_name : str
+            The name of the column to check and impute.
+        target_value :
+            The value to search for in the column.
+        impute_value :
+            The value to replace the target value with.
+        inplace : bool, optional (default=False)
+            If True, modifies the original DataFrame. If False, returns a modified copy.
+
+        Returns:
+        --------
+        pd.DataFrame
+            The DataFrame with values imputed (if inplace=False), else None.
+
+        Raises:
+        -------
+        ValueError:
+            If the specified column is not in the DataFrame.
+        """
+        if column_name not in df.columns:
+            raise ValueError(f"Column '{column_name}' not found in DataFrame.")
+
+        if df[column_name].isin([target_value]).any():
+            if inplace:
+                df[column_name] = df[column_name].replace(target_value, impute_value)
+                return None
+            else:
+                df_copy = df.copy()
+                df_copy[column_name] = df_copy[column_name].replace(
+                    target_value, impute_value
+                )
+                return df_copy
+        else:
+            if not inplace:
+                return df.copy()
+            return None  # no change made
+
+    def impute_missing_values(
+        self, df: pd.DataFrame, columns: list, impute_value, inplace: bool = False
+    ) -> pd.DataFrame:
+        """
+        Imputes missing (NaN) values in the specified columns with a given value.
+
+        Parameters:
+        -----------
+        df : pd.DataFrame
+            The DataFrame to process.
+        columns : list
+            List of column names to impute.
+        impute_value :
+            The value to use for imputing missing entries.
+        inplace : bool, optional (default=False)
+            If True, modifies the original DataFrame. If False, returns a modified copy.
+
+        Returns:
+        --------
+        pd.DataFrame or None
+            Modified DataFrame if inplace is False; otherwise, None.
+
+        Raises:
+        -------
+        ValueError:
+            If any specified column is not found in the DataFrame.
+        """
+        missing_cols = [col for col in columns if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"The following columns are not in the DataFrame: {missing_cols}"
+            )
+
+        if inplace:
+            df[columns] = df[columns].fillna(impute_value)
+            return None
+        else:
+            df_copy = df.copy()
+            df_copy[columns] = df_copy[columns].fillna(impute_value)
+            return df_copy
+
+    def drop_rows_with_missing_values(
+        self, df: pd.DataFrame, columns: list, inplace: bool = False
+    ) -> pd.DataFrame:
+        """
+        Drops rows where any of the specified columns contain NaN (missing) values.
+
+        Parameters:
+        -----------
+        df : pd.DataFrame
+            The DataFrame to process.
+        columns : list
+            List of column names to check for missing values.
+        inplace : bool, optional (default=False)
+            If True, modifies the original DataFrame. If False, returns a modified copy.
+
+        Returns:
+        --------
+        pd.DataFrame or None
+            Modified DataFrame if inplace is False; otherwise, None.
+
+        Raises:
+        -------
+        ValueError:
+            If any of the specified columns are not in the DataFrame.
+        """
+        missing_cols = [col for col in columns if col not in df.columns]
+        if missing_cols:
+            raise ValueError(
+                f"The following columns are not in the DataFrame: {missing_cols}"
+            )
+
+        if inplace:
+            df.dropna(subset=columns, inplace=True)
+            return None
+        else:
+            return df.dropna(subset=columns)
