@@ -9,7 +9,8 @@ from scipy.stats import ttest_ind, chi2_contingency
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from scipy.stats import f_oneway
+from scipy.stats import f_oneway, shapiro, levene
+import warnings
 
 # Setup Logging
 logger = logging.getLogger(__name__)
@@ -307,3 +308,50 @@ class RiskHypothesisTester:
         except Exception as e:
             logger.error(f"ANOVA failed for {feature} and {metric}: {e}")
             return {}
+
+    def check_assumptions(
+        self, group_col: str, value_col: str, min_group_size: int = 5
+    ):
+        """
+        Checks the assumptions of ANOVA:
+        1. Normality within groups (Shapiro-Wilk Test)
+        2. Homogeneity of variances (Levene’s Test)
+
+        Parameters:
+        - group_col: Column to group by (e.g., 'Province', 'PostalCode', etc.)
+        - value_col: Target numeric variable (e.g., 'ClaimFrequency', 'Margin')
+        - min_group_size: Skip groups with fewer rows than this
+
+        Returns:
+        - Dict with normality and variance results
+        """
+        warnings.filterwarnings("ignore")
+
+        print(f"\n📊 Checking Assumptions for '{value_col}' grouped by '{group_col}':")
+
+        normality_results = {}
+        groups = []
+
+        print("\n🔍 Shapiro-Wilk Normality Test:")
+        for name, group in self.df.groupby(group_col):
+            if len(group) < min_group_size:
+                print(f"  ⚠️ Skipping group '{name}' (n={len(group)}) < min_group_size")
+                continue
+            stat, p = shapiro(group[value_col])
+            groups.append(group[value_col])
+            normality_results[name] = p
+            status = "✅ Normal" if p > 0.05 else "❌ Not Normal"
+            print(f"  {name:<20}: p = {p:.4f} → {status}")
+
+        print("\n🧪 Levene’s Test for Equal Variance:")
+        if len(groups) >= 2:
+            stat, p = levene(*groups)
+            status = "✅ Equal Variance" if p > 0.05 else "❌ Variance Not Equal"
+            print(f"  Levene’s p = {p:.4f} → {status}")
+        else:
+            print("  ⚠️ Not enough valid groups for Levene’s test")
+
+        return {
+            "normality_p_values": normality_results,
+            "levene_p_value": p if len(groups) >= 2 else None,
+        }
