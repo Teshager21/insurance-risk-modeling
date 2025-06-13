@@ -12,4 +12,4 @@
 
 ## Interpretation
 
-We reject the null hypothesis that `Gender` has no effect on `TotalClaims` (p = 0.0244). This suggests that `Gender` is a significant factor affecting `TotalClaims`. Consider using it in segmentation strategy or premium pricing.
+We reject the null hypothesis that `Gender` has no effect on `TotalClaims` (p = 0.0244). This indicates no statistically "significant" impact of `Gender`

@@ -127,18 +127,22 @@ class RiskHypothesisTester:
         }
 
     def visualize_metric(self, feature: str, metric: str, kind: str = "box") -> None:
-        """Plot box or bar chart for metric grouped by feature."""
+        """Plot box or bar chart for metric grouped by
+        feature with wide layout for notebooks."""
         logger.info(f"Visualizing {metric} by {feature} ({kind} plot)...")
-        plt.figure(figsize=(8, 5))
+
+        # Set wide figure size
+        plt.figure(figsize=(20, 6))  # 20 inches wide
         if kind == "box":
             sns.boxplot(data=self.df, x=feature, y=metric)
         elif kind == "bar":
             sns.barplot(data=self.df, x=feature, y=metric, estimator=np.mean, ci="sd")
         else:
             raise ValueError("Plot kind must be either 'box' or 'bar'.")
-        plt.title(f"{metric} by {feature}", fontsize=14)
-        plt.xticks(rotation=15)
-        plt.grid(axis="y")
+
+        plt.title(f"{metric} by {feature}", fontsize=16)
+        plt.xticks(rotation=45, ha="right")  # Improved readability
+        plt.grid(axis="y", linestyle="--", alpha=0.7)
         plt.tight_layout()
         plt.show()
 
