@@ -9,7 +9,7 @@ from scipy.stats import ttest_ind, chi2_contingency
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-
+from scipy.stats import f_oneway
 
 # Setup Logging
 logger = logging.getLogger(__name__)
@@ -262,3 +262,48 @@ class RiskHypothesisTester:
         button.on_click(run_test)
 
         display(widgets.VBox([feature_dropdown, metric_dropdown, button, output]))
+
+    def run_anova(self, feature: str, metric: str) -> dict:
+        """
+        Perform one-way ANOVA for a numeric metric across multiple
+        groups of a categorical feature.
+
+        Args:
+            feature (str): Categorical column to group by (e.g., Province).
+            metric (str): Numeric metric column (e.g., Margin).
+
+        Returns:
+            dict: ANOVA result with F-statistic, p-value,
+            feature, metric, and group info.
+        """
+        logger.info(f"Running ANOVA for {metric} by {feature}...")
+
+        # Drop rows with missing values in relevant columns
+        df_clean = self.df[[feature, metric]].dropna()
+        groups = df_clean.groupby(feature)[metric].apply(list)
+
+        if len(groups) < 2:
+            logger.warning(f"Not enough groups in {feature} to perform ANOVA.")
+            return {}
+
+        try:
+            f_stat, p_value = f_oneway(*groups)
+            result = (
+                "Reject Null Hypothesis"
+                if p_value < 0.05
+                else "Fail to Reject Null Hypothesis"
+            )
+            logger.info(f"ANOVA result (p={p_value:.5f}): {result}")
+
+            return {
+                "feature": feature,
+                "metric": metric,
+                "f_stat": f_stat,
+                "p_value": p_value,
+                "num_groups": len(groups),
+                "result": result,
+            }
+
+        except Exception as e:
+            logger.error(f"ANOVA failed for {feature} and {metric}: {e}")
+            return {}
