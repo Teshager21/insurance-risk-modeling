@@ -157,3 +157,104 @@ class RiskHypothesisTester:
         for name, value in rows:
             table.add_row(str(name), str(value))
         console.print(table)
+
+    def export_markdown_report(
+        self, results: dict, filename: str = "hypothesis_report.md"
+    ):
+        """
+        Export test results to a markdown report.
+        """
+        from pathlib import Path
+
+        p = results.get("p_value")
+        stat = results.get("t_stat", results.get("chi2", None))
+        result_str = results.get("result") or (
+            "REJECT" if p is not None and p < 0.05 else "FAIL TO REJECT"
+        )
+
+        lines = [
+            "# Hypothesis Test Report\n",
+            "## Test Summary\n",
+            f"- **Feature:** `{results.get('feature', 'N/A')}`",
+            f"- **Metric:** `{results.get('metric', 'N/A')}`",
+            f"- **Group A:** `{results.get('group_a', 'N/A')}`",
+            f"- **Group B:** `{results.get('group_b', 'N/A')}`",
+            (
+                f"- **Statistic:** `{stat:.4f}`"
+                if stat is not None
+                else "- **Statistic:** `N/A`"
+            ),
+            f"- **p-value:** `{p:.4f}`" if p is not None else "- **p-value:** `N/A`",
+            f"- **Result:** `{result_str}`\n",
+            "## Interpretation\n",
+            self.interpret_result(results),
+        ]
+
+        Path(filename).write_text("\n".join(lines))
+        logger.info(f"Markdown report saved to {filename}")
+
+    def interpret_result(self, result: dict) -> str:
+        """
+        Generate human-readable interpretation of hypothesis test.
+        """
+        p = result.get("p_value")
+        feature = result.get("feature")
+        metric = result.get("metric")
+        interpretation = (
+            f"We {'reject' if p is not None and p < 0.05 else 'fail to reject'}"
+            f" the null hypothesis "
+            f"that `{feature}` has no effect on `{metric}` (p = {p:.4f})."
+        )
+
+        # p = results.get("p_value")
+        if p is not None and p > 0.05:
+
+            interpretation += (
+                f" This suggests that `{feature}` is a significant "
+                f"factor affecting `{metric}`. "
+                f"Consider using it in segmentation strategy or premium pricing."
+            )
+        else:
+            interpretation += (
+                f' This indicates no statistically "significant" impact of `{feature}`'
+            )
+            f"on `{metric}`."
+
+        return interpretation
+
+    def widget_ui(self):
+        import ipywidgets as widgets
+        from IPython.display import display, Markdown
+
+        feature_dropdown = widgets.Dropdown(
+            options=self.df.columns,
+            description="Feature:",
+            style={"description_width": "initial"},
+            layout=widgets.Layout(width="50%"),
+        )
+        metric_dropdown = widgets.Dropdown(
+            options=["ClaimFrequency", "ClaimSeverity", "Margin"],
+            description="Metric:",
+            style={"description_width": "initial"},
+            layout=widgets.Layout(width="50%"),
+        )
+
+        output = widgets.Output()
+
+        def run_test(_):
+            with output:
+                output.clear_output()
+                try:
+                    res = self.run_ttest(feature_dropdown.value, metric_dropdown.value)
+                    display(Markdown(f"### Test Result\n- {res}"))
+                    display(
+                        Markdown(f"### Interpretation\n{self.interpret_result(res)}")
+                    )
+                    self.visualize_metric(feature_dropdown.value, metric_dropdown.value)
+                except Exception as e:
+                    print("Error:", e)
+
+        button = widgets.Button(description="Run Test", button_style="success")
+        button.on_click(run_test)
+
+        display(widgets.VBox([feature_dropdown, metric_dropdown, button, output]))
