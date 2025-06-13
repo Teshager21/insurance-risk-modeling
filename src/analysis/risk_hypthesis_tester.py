@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional, Any
 
 import numpy as np
 import pandas as pd
@@ -9,7 +9,7 @@ from scipy.stats import ttest_ind, chi2_contingency
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from scipy.stats import f_oneway, shapiro, levene
+from scipy.stats import f_oneway, shapiro, levene, kruskal, mannwhitneyu
 import warnings
 
 # Setup Logging
@@ -354,4 +354,124 @@ class RiskHypothesisTester:
         return {
             "normality_p_values": normality_results,
             "levene_p_value": p if len(groups) >= 2 else None,
+        }
+
+    def test_numeric_by_group_kruskal(
+        self, group_col: str, numeric_col: str, min_group_size: int = 5
+    ):
+        """
+        Performs Kruskal-Wallis H-test to compare
+        distributions of a numeric variable across groups.
+
+        Parameters:
+        - group_col: Name of categorical grouping column.
+        - numeric_col: Name of numeric column to compare.
+        - min_group_size: Minimum samples in a group to include it.
+
+        Returns:
+        - dict with keys: p_value, statistic, groups_used
+        """
+        print(
+            f"\n🔍 Kruskal-Wallis Test: '{numeric_col}' across '{group_col}' groups..."
+        )
+
+        # Group numeric values by group_col, filtering small groups
+        grouped = [
+            group[numeric_col]
+            for _, group in self.df.groupby(group_col)
+            if len(group) >= min_group_size
+        ]
+        included_groups = (
+            self.df.groupby(group_col)
+            .filter(lambda g: len(g) >= min_group_size)[group_col]
+            .nunique()
+        )
+
+        if len(grouped) < 2:
+            print("❌ Not enough valid groups to perform test.")
+            return {"p_value": None, "statistic": None, "groups_used": 0}
+
+        stat, p = kruskal(*grouped)
+        print(f"✅ Kruskal-Wallis H-statistic = {stat:.4f}")
+        print(
+            f"📊 P-value = {p:.4f} → "
+            + (
+                "Reject H₀ (Differences exist)"
+                if p < 0.05
+                else "Fail to reject H₀ (No significant difference)"
+            )
+        )
+        print(f"🧮 Groups compared: {included_groups}")
+
+        return {"p_value": p, "statistic": stat, "groups_used": included_groups}
+
+    def test_two_group_difference(
+        self,
+        group_col: str,
+        numeric_col: str,
+        group_values: Optional[Tuple[Any, Any]] = None,
+    ):
+        """
+        Performs Mann–Whitney U test (non-parametric) to
+        compare two groups of a numeric variable.
+
+        Parameters:
+        - group_col: Binary categorical column name (e.g., 'Gender_Inferred')
+        - numeric_col: Numeric column name to compare (e.g., 'ClaimFrequency')
+        - group_values: Tuple of two group values to compare, e.g., ('Male', 'Female').
+                        If None, it will auto-detect from unique values.
+
+        Returns:
+        - Dict with p-value, test statistic, and interpretation.
+        """
+        print(f"\n🔍 Mann–Whitney U Test for '{numeric_col}' by '{group_col}'")
+
+        # Auto-detect groups if not specified
+        if group_values is None:
+            unique_vals = self.df[group_col].dropna().unique()
+            if len(unique_vals) != 2:
+                raise ValueError(
+                    f"Column '{group_col}' must have exactly 2 "
+                    f"unique values for this test."
+                )
+            group_values = tuple(unique_vals)
+
+        group1_vals = self.df[self.df[group_col] == group_values[0]][
+            numeric_col
+        ].dropna()
+        group2_vals = self.df[self.df[group_col] == group_values[1]][
+            numeric_col
+        ].dropna()
+
+        if len(group1_vals) == 0 or len(group2_vals) == 0:
+            print("❌ One of the groups has no data.")
+            return {
+                "p_value": None,
+                "statistic": None,
+                "interpretation": "Insufficient data",
+            }
+
+        # Perform test
+        stat, p = mannwhitneyu(group1_vals, group2_vals, alternative="two-sided")
+        interpretation = (
+            "Reject H₀ (Groups differ)"
+            if p < 0.05
+            else "Fail to reject H₀ (No significant difference)"
+        )
+
+        print(f"✅ U-statistic = {stat:.4f}")
+        print(f"📊 P-value = {p:.4f} → {interpretation}")
+        print(
+            f"🧪 Compared: {group_values[0]} "
+            f"(n={len(group1_vals)}), {group_values[1]} (n={len(group2_vals)})"
+        )
+
+        return {
+            "group_1": group_values[0],
+            "group_2": group_values[1],
+            "n1": len(group1_vals),
+            "n2": len(group2_vals),
+            "statistic": stat,
+            "p_value": p,
+            "interpretation": interpretation,
         }
