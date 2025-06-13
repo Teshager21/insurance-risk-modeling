@@ -101,22 +101,53 @@ class RiskHypothesisTester:
         }
 
     def run_chi2(self, feature: str, binary_metric: str = "ClaimFrequency") -> Dict:
-        """Run Chi-squared test for categorical feature vs binary metric."""
-        logger.info(f"Running chi-squared test for {feature} vs {binary_metric}...")
+        """
+        Run Chi-squared test and display detailed group-level
+        counts and proportions in a rich table.
+        """
+        logger.info(f"Running chi-squared test for '{feature}' vs '{binary_metric}'...")
+
         contingency = pd.crosstab(self.df[feature], self.df[binary_metric])
-        chi2, p, dof, _ = chi2_contingency(contingency)
+        chi2, p, dof, expected = chi2_contingency(contingency)
+        conclusion = "REJECT" if p < 0.05 else "FAIL TO REJECT"
 
-        result = "REJECT" if p < 0.05 else "FAIL TO REJECT"
-
+        # Print summary table
         self._print_result_table(
             title=f"Chi-Squared Test: {feature} vs {binary_metric}",
             rows=[
                 ("Chi² Statistic", f"{chi2:.4f}"),
                 ("Degrees of Freedom", f"{dof}"),
                 ("P-Value", f"{p:.4f}"),
-                ("Conclusion", result + " null hypothesis"),
+                ("Conclusion", f"{conclusion} null hypothesis"),
             ],
         )
+
+        # Prepare detailed group table
+        group_counts = contingency.sum(axis=1)
+        group_proportions = contingency.div(group_counts, axis=0).round(4)
+
+        table = Table(title=f"Group Details for '{feature}'")
+
+        # Add columns: category + one column per binary_metric
+        # category count + proportion + total
+        table.add_column(feature, style="bold cyan")
+        for col in contingency.columns:
+            table.add_column(f"Count ({col})", justify="right")
+            table.add_column(f"Prop ({col})", justify="right")
+        table.add_column("Total", justify="right", style="bold")
+
+        for category in contingency.index:
+            counts = contingency.loc[category]
+            proportions = group_proportions.loc[category]
+            total = group_counts[category]
+            row = [str(category)]
+            for col in contingency.columns:
+                row.append(str(counts[col]))
+                row.append(f"{proportions[col]:.4f}")
+            row.append(str(total))
+            table.add_row(*row)
+
+        console.print(table)
 
         return {
             "feature": feature,
@@ -124,7 +155,17 @@ class RiskHypothesisTester:
             "chi2": chi2,
             "p_value": p,
             "dof": dof,
-            "conclusion": result,
+            "conclusion": conclusion,
+            "group_details": {
+                category: {
+                    "counts": contingency.loc[category].to_dict(),
+                    "proportions": group_proportions.loc[category].to_dict(),
+                    "total": group_counts[category],
+                }
+                for category in contingency.index
+            },
+            "contingency_table": contingency,
+            "expected_freq": expected,
         }
 
     def visualize_metric(self, feature: str, metric: str, kind: str = "box") -> None:
@@ -410,68 +451,113 @@ class RiskHypothesisTester:
         group_col: str,
         numeric_col: str,
         group_values: Optional[Tuple[Any, Any]] = None,
-    ):
+        alpha: float = 0.05,
+    ) -> Dict[str, Any]:
         """
-        Performs Mann–Whitney U test (non-parametric) to
-        compare two groups of a numeric variable.
+        Perform Mann–Whitney U test to compare distributions of
+        a numeric variable between two groups,
+        with a detailed business-friendly interpretation.
 
-        Parameters:
-        - group_col: Binary categorical column name (e.g., 'Gender_Inferred')
-        - numeric_col: Numeric column name to compare (e.g., 'ClaimFrequency')
-        - group_values: Tuple of two group values to compare, e.g., ('Male', 'Female').
-                        If None, it will auto-detect from unique values.
+        Args:
+            group_col (str): Column name for the grouping variable
+            (must have exactly 2 unique values).
+            numeric_col (str): Numeric column name to compare between groups.
+            group_values (Optional[Tuple[Any, Any]]): Optional tuple
+            specifying which two groups to compare.
+                If None, will infer from unique values in group_col.
+            alpha (float): Significance level for hypothesis testing (default 0.05).
 
         Returns:
-        - Dict with p-value, test statistic, and interpretation.
+            Dict[str, Any]: Dictionary containing test statistics, p-value,
+            and detailed interpretation.
         """
-        print(f"\n🔍 Mann–Whitney U Test for '{numeric_col}' by '{group_col}'")
+        # Validate input DataFrame columns
+        if group_col not in self.df.columns:
+            raise ValueError(f"Grouping column '{group_col}' not found in DataFrame.")
+        if numeric_col not in self.df.columns:
+            raise ValueError(f"Numeric column '{numeric_col}' not found in DataFrame.")
 
-        # Auto-detect groups if not specified
+        # Determine groups if not provided
+        unique_vals = self.df[group_col].dropna().unique()
         if group_values is None:
-            unique_vals = self.df[group_col].dropna().unique()
             if len(unique_vals) != 2:
                 raise ValueError(
-                    f"Column '{group_col}' must have exactly 2 "
-                    f"unique values for this test."
+                    f"Grouping column '{group_col}' "
+                    f"must have exactly two unique non-null values "
+                    f"for this test, found {len(unique_vals)}: {unique_vals}"
                 )
             group_values = tuple(unique_vals)
+        else:
+            if len(group_values) != 2:
+                raise ValueError(
+                    "Parameter 'group_values' must be a tuple of exactly two values."
+                )
 
-        group1_vals = self.df[self.df[group_col] == group_values[0]][
-            numeric_col
+        # Extract numeric data per group, drop missing values
+        group1_data = self.df.loc[
+            self.df[group_col] == group_values[0], numeric_col
         ].dropna()
-        group2_vals = self.df[self.df[group_col] == group_values[1]][
-            numeric_col
+        group2_data = self.df.loc[
+            self.df[group_col] == group_values[1], numeric_col
         ].dropna()
 
-        if len(group1_vals) == 0 or len(group2_vals) == 0:
-            print("❌ One of the groups has no data.")
+        if group1_data.empty or group2_data.empty:
             return {
-                "p_value": None,
                 "statistic": None,
-                "interpretation": "Insufficient data",
+                "p_value": None,
+                "basic_interpretation": "Insufficient data in one or both groups.",
+                "detailed_interpretation": None,
+                "group_1": group_values[0],
+                "group_2": group_values[1],
+                "n1": len(group1_data),
+                "n2": len(group2_data),
             }
 
-        # Perform test
-        stat, p = mannwhitneyu(group1_vals, group2_vals, alternative="two-sided")
-        interpretation = (
-            "Reject H₀ (Groups differ)"
-            if p < 0.05
-            else "Fail to reject H₀ (No significant difference)"
+        # Perform Mann-Whitney U test
+        stat, p = mannwhitneyu(group1_data, group2_data, alternative="two-sided")
+
+        # Basic hypothesis test interpretation
+        basic_interp = (
+            f"Reject H₀ (statistically significant difference, p={p:.4f})"
+            if p < alpha
+            else f"Fail to reject H₀ (no significant difference, p={p:.4f})"
         )
 
-        print(f"✅ U-statistic = {stat:.4f}")
-        print(f"📊 P-value = {p:.4f} → {interpretation}")
-        print(
-            f"🧪 Compared: {group_values[0]} "
-            f"(n={len(group1_vals)}), {group_values[1]} (n={len(group2_vals)})"
-        )
+        # Calculate mean difference percentage relative to group 2 mean
+        mean1 = group1_data.mean()
+        mean2 = group2_data.mean()
+
+        if np.isclose(mean2, 0):
+            diff_pct = np.inf if not np.isclose(mean1, 0) else 0.0
+        else:
+            diff_pct = ((mean1 - mean2) / abs(mean2)) * 100
+
+        # Detailed business interpretation
+        if p < alpha:
+            direction = "higher" if diff_pct > 0 else "lower"
+            detailed_interp = (
+                f"{group_values[0]} exhibits a "
+                f"{abs(diff_pct):.1f}% {direction} average {numeric_col} "
+                f"compared to {group_values[1]}, suggesting"
+                f" a potential need for risk or pricing adjustment."
+            )
+        else:
+            detailed_interp = (
+                f"No statistically significant difference in"
+                f" average {numeric_col} was detected between "
+                f"{group_values[0]} and {group_values[1]} (p={p:.4f})."
+            )
 
         return {
-            "group_1": group_values[0],
-            "group_2": group_values[1],
-            "n1": len(group1_vals),
-            "n2": len(group2_vals),
             "statistic": stat,
             "p_value": p,
-            "interpretation": interpretation,
+            "basic_interpretation": basic_interp,
+            "detailed_interpretation": detailed_interp,
+            "group_1": group_values[0],
+            "group_2": group_values[1],
+            "mean_group_1": mean1,
+            "mean_group_2": mean2,
+            "diff_percent": diff_pct,
+            "n1": len(group1_data),
+            "n2": len(group2_data),
         }
