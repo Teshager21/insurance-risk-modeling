@@ -13,8 +13,8 @@ docker-compose.yml
 
 
 # DVC
-.dvc/
-*.dvc
+!.dvc/
+!*.dvc
 .cache/
 
 
