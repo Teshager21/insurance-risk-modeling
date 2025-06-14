@@ -510,3 +510,95 @@ class DataQualityUtils:
                 plt.close()
 
         return outliers
+
+    def infer_gender_from_title(
+        self,
+        gender_col: str = "Gender",
+        title_col: str = "Title",
+        new_col: str = "Gender_Inferred",
+    ) -> pd.DataFrame:
+        """
+        Infers gender based on the title for rows where gender is
+        not specified or missing.
+
+        Parameters
+        ----------
+        gender_col : str
+            Column name containing gender information (default is 'Gender').
+        title_col : str
+            Column name containing title information (default is 'Title').
+        new_col : str
+            Name of the column to store inferred gender (default is 'Gender_Inferred').
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with a new column for inferred gender.
+        """
+
+        title_to_gender = {
+            "mr": "Male",
+            "mrs": "Female",
+            "ms": "Female",
+            "miss": "Female",
+        }
+
+        def _infer(row):
+            gender_val = (
+                str(row.get(gender_col)).strip().lower()
+                if pd.notna(row.get(gender_col))
+                else "not specified"
+            )
+            title_val = (
+                str(row.get(title_col)).strip().lower()
+                if pd.notna(row.get(title_col))
+                else ""
+            )
+
+            if gender_val != "not specified":
+                return row.get(gender_col)
+            return title_to_gender.get(title_val, "Unknown")
+
+        self.df[new_col] = self.df.apply(_infer, axis=1)
+
+        inferred_count = (
+            (self.df[gender_col].str.lower() == "not specified")
+            & (self.df[new_col] != "Unknown")
+        ).sum()
+        total_unspecified = (self.df[gender_col].str.lower() == "not specified").sum()
+
+        print(
+            f"[LOG] Inferred gender for {inferred_count} out of "
+            f"{total_unspecified} 'Not specified' entries."
+        )
+
+        return self.df
+
+    def infer_dr_gender_by_majority(self, gender_col="Gender", title_col="Title"):
+        """
+        Infer gender for entries with title 'Dr' and
+        unspecified gender using majority gender.
+        """
+        df = self.df  # access the internal DataFrame
+
+        dr_known = df[
+            (df[title_col] == "Dr") & (df[gender_col].str.lower() != "not specified")
+        ]
+
+        if dr_known.empty:
+            print("No known 'Dr' entries with specified gender.")
+            return df
+
+        # Find the most common gender for Dr.
+        inferred_gender = dr_known[gender_col].mode()[0]
+        print(f"Most frequent known gender for Dr.: {inferred_gender}")
+
+        # Fill in unspecified Dr. entries
+        mask = (df[title_col] == "Dr") & (df[gender_col].str.lower() == "not specified")
+        df.loc[mask, gender_col] = inferred_gender
+        print(f"Inferred '{inferred_gender}' for {mask.sum()} unspecified Dr. entries.")
+
+        return df
+
+    def infer_gender_for_doctors(self, gender_col="Gender", title_col="Title"):
+        return self.infer_dr_gender_by_majority(self.df, gender_col, title_col)
