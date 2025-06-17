@@ -3,6 +3,7 @@ import pandas as pd
 import logging
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
 
 # Set up module-level logger
 logger = logging.getLogger(__name__)
@@ -456,6 +457,43 @@ class DataQualityUtils:
         return outliers
 
     @staticmethod
+    def cap_outliers_iqr(
+        df: pd.DataFrame, columns: List[str], iqr_multiplier: float = 1.5
+    ) -> pd.DataFrame:
+        """
+        Cap (winsorize) outliers in specified numeric columns using the IQR method.
+
+        Parameters:
+        ----------
+        df : pd.DataFrame
+            The input DataFrame.
+        columns : List[str]
+            List of numeric column names to cap outliers in.
+        iqr_multiplier : float, optional
+            Multiplier for the IQR to determine the outlier bounds (default is 1.5).
+
+        Returns:
+        -------
+        pd.DataFrame
+            A copy of the DataFrame with outliers capped at IQR bounds.
+        """
+        df_capped = df.copy()
+
+        for col in columns:
+            if col not in df.columns or not pd.api.types.is_numeric_dtype(df[col]):
+                continue
+
+            Q1 = df[col].quantile(0.25)
+            Q3 = df[col].quantile(0.75)
+            IQR = Q3 - Q1
+            lower_bound = Q1 - iqr_multiplier * IQR
+            upper_bound = Q3 + iqr_multiplier * IQR
+
+            df_capped[col] = df_capped[col].clip(lower=lower_bound, upper=upper_bound)
+
+        return df_capped
+
+    @staticmethod
     def detect_outliers_iqr_with_boxplot(
         df: pd.DataFrame,
         columns: List[str],
@@ -602,3 +640,107 @@ class DataQualityUtils:
 
     def infer_gender_for_doctors(self, gender_col="Gender", title_col="Title"):
         return self.infer_dr_gender_by_majority(self.df, gender_col, title_col)
+
+    MAX_CARDINALITY = 1000  # Set your own threshold
+
+    @staticmethod
+    def create_combined_features(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Create robust combined and derived features from existing columns
+        for better modeling.
+        Handles cardinality, NaNs, division errors, and logs feature addition.
+
+        Returns
+        -------
+        pd.DataFrame: DataFrame with new engineered features added.
+        """
+        df = df.copy()
+        colset = set(df.columns)
+
+        def has_cols(cols):
+            return all(col in colset for col in cols)
+
+        def safe_concat(cols, name):
+            try:
+                df[name] = df[cols].astype(str).agg("_".join, axis=1)
+                if df[name].nunique() > DataQualityUtils.MAX_CARDINALITY:
+                    logging.warning(f"Dropping {name} due to high cardinality.")
+                    df.drop(columns=[name], inplace=True)
+            except Exception as e:
+                logging.warning(f"Failed to create {name}: {e}")
+
+        # Combined features
+        if has_cols(["make", "Model"]):
+            safe_concat(["make", "Model"], "make_model")
+
+        if has_cols(["Province", "PostalCode"]):
+            safe_concat(["Province", "PostalCode"], "province_postal")
+
+        if has_cols(["MainCrestaZone", "SubCrestaZone"]):
+            safe_concat(["MainCrestaZone", "SubCrestaZone"], "cresta_zone_full")
+
+        if has_cols(["CoverCategory", "CoverType", "CoverGroup"]):
+            safe_concat(["CoverCategory", "CoverType", "CoverGroup"], "cover_package")
+
+        if has_cols(["VehicleType", "bodytype", "Cylinders"]):
+            safe_concat(["VehicleType", "bodytype", "Cylinders"], "vehicle_class")
+
+        if has_cols(["CapitalOutstanding", "NewVehicle", "WrittenOff"]):
+            df["vehicle_fin_status"] = (
+                df["CapitalOutstanding"].fillna(0).astype(str)
+                + "_"
+                + df["NewVehicle"].astype(str)
+                + "_"
+                + df["WrittenOff"].astype(str)
+            )
+
+        if has_cols(["Country", "Citizenship"]):
+            safe_concat(["Country", "Citizenship"], "country_citizenship")
+
+        if has_cols(["Gender", "MaritalStatus", "Title"]):
+            safe_concat(["Gender", "MaritalStatus", "Title"], "demographic_group")
+
+        # Date feature processing
+        if has_cols(["TransactionMonth"]):
+            df["TransactionMonth"] = pd.to_datetime(
+                df["TransactionMonth"], errors="coerce"
+            )
+            df["TransactionMonth"] = df["TransactionMonth"].dt.tz_localize(None)
+
+        if has_cols(["VehicleIntroDate"]):
+            df["VehicleIntroDate"] = pd.to_datetime(
+                df["VehicleIntroDate"], errors="coerce"
+            )
+            df["VehicleIntroDate"] = df["VehicleIntroDate"].dt.tz_localize(None)
+
+        if has_cols(["VehicleIntroDate", "TransactionMonth"]):
+            df["vehicle_age_years"] = (
+                (df["TransactionMonth"] - df["VehicleIntroDate"]).dt.days / 365
+            ).round(1)
+            df["vehicle_age_years"] = (
+                df["vehicle_age_years"].replace([np.inf, -np.inf], 0).fillna(0)
+            )
+
+        if has_cols(["TransactionMonth", "RegistrationYear"]):
+            df["vehicle_age_from_reg"] = (
+                (df["TransactionMonth"].dt.year - df["RegistrationYear"])
+                .replace([np.inf, -np.inf], 0)
+                .fillna(0)
+            )
+
+        # Ratios with zero fallback
+        if has_cols(["TotalPremium", "SumInsured"]):
+            df["premium_to_sum_ratio"] = (
+                (df["TotalPremium"] / df["SumInsured"])
+                .replace([np.inf, -np.inf], 0)
+                .fillna(0)
+            )
+
+        if has_cols(["TotalClaims", "TotalPremium"]):
+            df["claims_to_premium_ratio"] = (
+                (df["TotalClaims"] / df["TotalPremium"])
+                .replace([np.inf, -np.inf], 0)
+                .fillna(0)
+            )
+
+        return df
