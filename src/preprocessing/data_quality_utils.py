@@ -456,6 +456,43 @@ class DataQualityUtils:
         return outliers
 
     @staticmethod
+    def cap_outliers_iqr(
+        df: pd.DataFrame, columns: List[str], iqr_multiplier: float = 1.5
+    ) -> pd.DataFrame:
+        """
+        Cap (winsorize) outliers in specified numeric columns using the IQR method.
+
+        Parameters:
+        ----------
+        df : pd.DataFrame
+            The input DataFrame.
+        columns : List[str]
+            List of numeric column names to cap outliers in.
+        iqr_multiplier : float, optional
+            Multiplier for the IQR to determine the outlier bounds (default is 1.5).
+
+        Returns:
+        -------
+        pd.DataFrame
+            A copy of the DataFrame with outliers capped at IQR bounds.
+        """
+        df_capped = df.copy()
+
+        for col in columns:
+            if col not in df.columns or not pd.api.types.is_numeric_dtype(df[col]):
+                continue
+
+            Q1 = df[col].quantile(0.25)
+            Q3 = df[col].quantile(0.75)
+            IQR = Q3 - Q1
+            lower_bound = Q1 - iqr_multiplier * IQR
+            upper_bound = Q3 + iqr_multiplier * IQR
+
+            df_capped[col] = df_capped[col].clip(lower=lower_bound, upper=upper_bound)
+
+        return df_capped
+
+    @staticmethod
     def detect_outliers_iqr_with_boxplot(
         df: pd.DataFrame,
         columns: List[str],
