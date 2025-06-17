@@ -717,24 +717,30 @@ class DataQualityUtils:
             df["vehicle_age_years"] = (
                 (df["TransactionMonth"] - df["VehicleIntroDate"]).dt.days / 365
             ).round(1)
-            df["vehicle_age_years"] = df["vehicle_age_years"].replace(
-                [np.inf, -np.inf], np.nan
+            df["vehicle_age_years"] = (
+                df["vehicle_age_years"].replace([np.inf, -np.inf], 0).fillna(0)
             )
 
         if has_cols(["TransactionMonth", "RegistrationYear"]):
             df["vehicle_age_from_reg"] = (
-                df["TransactionMonth"].dt.year - df["RegistrationYear"]
-            ).replace([np.inf, -np.inf], np.nan)
+                (df["TransactionMonth"].dt.year - df["RegistrationYear"])
+                .replace([np.inf, -np.inf], 0)
+                .fillna(0)
+            )
 
-        # Ratios
+        # Ratios with zero fallback
         if has_cols(["TotalPremium", "SumInsured"]):
             df["premium_to_sum_ratio"] = (
-                df["TotalPremium"] / df["SumInsured"]
-            ).replace([np.inf, -np.inf], np.nan)
+                (df["TotalPremium"] / df["SumInsured"])
+                .replace([np.inf, -np.inf], 0)
+                .fillna(0)
+            )
 
         if has_cols(["TotalClaims", "TotalPremium"]):
             df["claims_to_premium_ratio"] = (
-                df["TotalClaims"] / df["TotalPremium"]
-            ).replace([np.inf, -np.inf], np.nan)
+                (df["TotalClaims"] / df["TotalPremium"])
+                .replace([np.inf, -np.inf], 0)
+                .fillna(0)
+            )
 
         return df

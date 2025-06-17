@@ -3,6 +3,7 @@ import numpy as np
 import logging
 import sklearn
 from packaging import version
+import joblib
 
 from sklearn.model_selection import train_test_split, cross_val_score, KFold
 from sklearn.pipeline import Pipeline
@@ -11,10 +12,12 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.tree import DecisionTreeRegressor
 from sklearn.ensemble import RandomForestRegressor
 import xgboost as xgb
+from xgboost import XGBClassifier
 import shap
 
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.metrics import roc_auc_score, classification_report
 
 import category_encoders as ce
 import optuna
@@ -462,3 +465,122 @@ Provides insights into feature contributions.
             self.df = self.df.drop(columns=low_impact_features, errors="ignore")
 
         return summary_df
+
+    def train_claim_probability_model(
+        self,
+        feature_cols,
+        target_col="MadeClaim",
+        test_size=0.2,
+        random_state=42,
+        return_model=False,
+    ):
+        """
+        Train a binary classification model to predict
+        claim probability and attach predicted probability
+        to the main dataframe.
+
+        Args:
+            feature_cols (list): List of feature column names.
+            target_col (str): Binary target column indicating if a claim was made.
+            test_size (float): Proportion of test data.
+            random_state (int): Random seed.
+            return_model (bool): Whether to return the trained model.
+
+        Returns:
+            pd.DataFrame: DataFrame with added 'predicted_claim_prob' column.
+            (optional) model: Trained classifier.
+        """
+        # Prepare data
+        df = self.df.copy()
+        X = df[feature_cols]
+        y = df[target_col]
+
+        # Encode categorical columns if necessary
+        X = pd.get_dummies(X, drop_first=True)
+
+        # Train/test split
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, stratify=y, random_state=random_state
+        )
+
+        # Train classifier
+        clf = XGBClassifier(
+            use_label_encoder=False, eval_metric="logloss", random_state=random_state
+        )
+        clf.fit(X_train, y_train)
+
+        # Evaluation
+        y_proba = clf.predict_proba(X_test)[:, 1]
+        auc = roc_auc_score(y_test, y_proba)
+        print(f"[Claim Prob] ROC-AUC: {auc:.4f}")
+        print(classification_report(y_test, clf.predict(X_test)))
+
+        # Predict on all data
+        df["predicted_claim_prob"] = clf.predict_proba(X)[:, 1]
+
+        # Merge predictions into the main DataFrame using index
+        self.df = self.df.merge(
+            df[["predicted_claim_prob"]], left_index=True, right_index=True, how="left"
+        )
+
+        if return_model:
+            return self.df, clf
+        return self.df
+
+    def calculate_risk_based_premium(
+        self,
+        prob_col="predicted_claim_prob",
+        severity_col="predicted_severity",
+        expense_loading=100.0,
+        profit_margin=0.15,
+        output_col="risk_based_premium",
+    ):
+        """
+        Calculate a risk-based premium using probability of claim
+        and severity predictions.
+
+        Args:
+            prob_col (str): Column name for predicted claim probability.
+            severity_col (str): Column name for predicted severity.
+            expense_loading (float): Flat administrative cost to be added.
+            profit_margin (float): Fractional profit margin (e.g. 0.15 = 15%).
+            output_col (str): Name for the resulting premium column.
+
+        Returns:
+            pd.DataFrame: Updated dataframe with new premium column.
+        """
+
+        if prob_col not in self.df.columns or severity_col not in self.df.columns:
+
+            raise ValueError(
+                f"Missing required columns:'{prob_col}'"
+                f" and/or '{severity_col}' in dataframe."
+            )
+
+        base_premium = self.df[prob_col] * self.df[severity_col]
+        self.df[output_col] = (base_premium + expense_loading) * (1 + profit_margin)
+
+        print(
+            f"[Premium] Risk-based premium"
+            f" calculated and stored in column '{output_col}'"
+        )
+        return self.df
+
+    def save_model(self, filepath: str = "model_pipeline.joblib"):
+        """
+        Save the trained pipeline model to disk.
+        """
+        if self.pipeline is None:
+            raise RuntimeError("The pipeline has not been trained yet.")
+        joblib.dump(self.pipeline, filepath)
+        logger.info(f"Model pipeline saved to: {filepath}")
+
+    @classmethod
+    def load_model(cls, filepath: str):
+        """
+        Load a trained pipeline model from disk.
+        """
+        pipeline = joblib.load(filepath)
+        instance = cls(df=pd.DataFrame(), target_col="dummy")
+        instance.pipeline = pipeline
+        return instance
