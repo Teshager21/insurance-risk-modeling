@@ -109,8 +109,8 @@ dvc pull
 
 | Task | Model | Metric | Score |
 |------|-------|--------|-------|
-| Claim Probability | XGBoost | ROC AUC | **0.81** |
-| Claim Severity | Ridge | RMSE | **~32,000 ZAR** |
+| Claim Probability | XGBoost | ROC AUC | **0.94** |
+| Claim Severity | Ridge | RMSE | **~9004.31 ZAR** |
 
 Model interpretability was enhanced using SHAP to explain predictions to stakeholders with clear visuals and feature importance.
 
