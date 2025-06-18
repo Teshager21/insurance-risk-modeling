@@ -1,5 +1,3 @@
-# File: src/utils/colab_setup.py
-
 import os
 import subprocess
 
@@ -19,22 +17,26 @@ def bootstrap_colab(
     repo_name: str,
     requirements_file: str = "requirements.txt",
     dvc_remote_type: str = "gdrive",
+    service_account_path: str = "secrets/dvc-drive-remote-8f00f1ce2758.json",
+    dvc_remote_name: str = "my_gdrive_remote",
 ):
     """
-    Automate project setup for Google Colab.
+    Automate project setup for Google Colab with support for GDrive DVC remote.
 
-    Steps performed:
-    - Clone GitHub repository (if not present)
-    - Install Python dependencies
-    - Install DVC with remote support
+    Steps:
+    - Clone GitHub repository
+    - Install Python requirements
+    - Install DVC and configure GDrive remote with service account
     - Pull DVC-tracked data
-    - Install the project package in editable mode
+    - Install the project in editable mode
 
     Args:
-        repo_url (str): HTTPS URL of the GitHub repository to clone.
-        repo_name (str): Folder name for the cloned repository.
-        requirements_file (str): Path to requirements.txt.
-        dvc_remote_type (str): DVC remote type (e.g., 'gdrive', 's3').
+        repo_url (str): GitHub repository URL.
+        repo_name (str): Directory name to clone into.
+        requirements_file (str): Pip requirements file.
+        dvc_remote_type (str): DVC remote type (e.g., "gdrive").
+        service_account_path (str): Path to GDrive service account JSON file.
+        dvc_remote_name (str): Name of the configured DVC remote.
     """
     if not in_colab():
         print("🖥️ Not running in Google Colab. Skipping setup.")
@@ -56,8 +58,25 @@ def bootstrap_colab(
     print(f"📦 Installing DVC with remote '{dvc_remote_type}' support ...")
     subprocess.run(["pip", "install", f"dvc[{dvc_remote_type}]"], check=True)
 
+    # Configure service account credentials for GDrive remote
+    if dvc_remote_type == "gdrive" and os.path.exists(service_account_path):
+        print("🔐 Configuring DVC to use GDrive service account ...")
+        subprocess.run(
+            [
+                "dvc",
+                "remote",
+                "modify",
+                dvc_remote_name,
+                "gdrive_service_account_json_file_path",
+                service_account_path,
+            ],
+            check=True,
+        )
+    else:
+        print("⚠️ Warning: Service account JSON not found. GDrive remote may fail.")
+
     print("📡 Pulling DVC-tracked data ...")
-    subprocess.run(["dvc", "pull"], check=True)
+    subprocess.run(["dvc", "pull", "-r", dvc_remote_name], check=True)
 
     print("🔧 Installing project package in editable mode ...")
     subprocess.run(["pip", "install", "-e", "."], check=True)

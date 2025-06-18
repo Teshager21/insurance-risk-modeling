@@ -16,7 +16,7 @@ docker-compose.yml
 !.dvc/
 !*.dvc
 .cache/
-
+!.dvc/config
 
 # Python
 __pycache__/
@@ -61,6 +61,7 @@ test-results/
 
 # Data files
 data/**/*.txt
+!data/**/*.dvc
 *.csv
 *.tsv
 *.parquet
@@ -72,6 +73,7 @@ data/**/*.txt
 *.sqlite3
 *.json
 *.yaml
+!dvc.yaml
 *.yml
 
 # Secrets & credentials

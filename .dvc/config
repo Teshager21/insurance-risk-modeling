@@ -1,4 +1,8 @@
 [core]
-    remote = localstorage
+    remote = my_gdrive_remote
 ['remote "localstorage"']
     url = /home/teshager/Documents/dvc_remote
+['remote "my_gdrive_remote"']
+    url = gdrive://1fPOrXKds0PNYQbKNbSDtC5j51MXm9gY7
+    gdrive_use_service_account = true
+    gdrive_service_account_json_file_path = /home/teshager/.config/gdrive/dvc-drive-remote-8f00f1ce2758.json
