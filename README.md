@@ -3,7 +3,7 @@
 > Official repository for the **AlphaCare Insurance Solutions (ACIS)** marketing analytics and pricing optimization project. This end-to-end project analyzes historical auto insurance claims to model customer risk, segment policyholders, validate business hypotheses, and deliver actionable insights to improve pricing and marketing strategies across South Africa.
 
 ---
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Teshager21/insurance-risk-modeling/blob/feedback/notebooks/modeling/insurance_modeling.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Teshager21/insurance-risk-modeling/blob/feedback/notebooks/modeling/insurnace_modeling.ipynb)
 
 
 ## 🚀 Executive Summary
