@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 
 
 def in_colab() -> bool:
@@ -29,6 +30,7 @@ def bootstrap_colab(
     - Install DVC and configure GDrive remote with service account
     - Pull DVC-tracked data
     - Install the project in editable mode
+    - Add src/ folder to Python path for imports
 
     Args:
         repo_url (str): GitHub repository URL.
@@ -52,13 +54,18 @@ def bootstrap_colab(
 
     os.chdir(repo_name)
 
+    # Add src folder to sys.path for imports
+    src_path = os.path.abspath("src")
+    if src_path not in sys.path:
+        sys.path.insert(0, src_path)
+    print(f"🐍 Added '{src_path}' to sys.path")
+
     print(f"📦 Installing dependencies from {requirements_file} ...")
     subprocess.run(["pip", "install", "-r", requirements_file], check=True)
 
     print(f"📦 Installing DVC with remote '{dvc_remote_type}' support ...")
     subprocess.run(["pip", "install", f"dvc[{dvc_remote_type}]"], check=True)
 
-    # Configure service account credentials for GDrive remote
     if dvc_remote_type == "gdrive" and os.path.exists(service_account_path):
         print("🔐 Configuring DVC to use GDrive service account ...")
         subprocess.run(
